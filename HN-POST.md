@@ -20,8 +20,8 @@ This is a procedural Chinese ink-wash (sumi-e) landscape renderer. By our own
 estimate, and a reviewer's, it is roughly 6/10. I am posting it because the
 failure trail is more interesting than the current output.
 
-Repo: <REPO_URL>
-Demo (no signup, renders on load): <DEMO_URL>
+Repo: https://github.com/chinatian2000-png/inkwash
+Demo (no signup, renders on load): https://chinatian2000-png.github.io/inkwash/
 
 WHY IT IS NOT AI
 
