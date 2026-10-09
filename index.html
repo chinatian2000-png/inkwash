@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Ink Wash — procedural Chinese ink landscape, no AI</title>
+<style>
+  :root{
+    --paper:#f6f2e7; --ink:#1e1f1e; --mute:#7c766a; --line:#dcd6c6;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--paper);color:var(--ink);
+    font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB",sans-serif;
+    -webkit-font-smoothing:antialiased}
+  header{padding:18px 20px 6px;max-width:760px;margin:0 auto}
+  h1{font-size:17px;font-weight:600;margin:0 0 4px;letter-spacing:.2px}
+  .sub{color:var(--mute);font-size:13px;margin:0}
+  .sub b{color:var(--ink);font-weight:600}
+  main{max-width:760px;margin:0 auto;padding:12px 20px 48px}
+  #stage{position:relative;width:100%;border:1px solid var(--line);background:#efeade;
+    border-radius:2px;overflow:hidden;line-height:0;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  canvas{width:100%;height:auto;display:block;touch-action:manipulation}
+  .busy{position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+    background:rgba(246,242,231,.72);color:var(--mute);font-size:13px}
+  .busy.on{display:flex}
+  .bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:16px 0 4px}
+  button{font:inherit;font-size:14px;padding:9px 16px;border-radius:2px;cursor:pointer;
+    border:1px solid var(--ink);background:var(--ink);color:var(--paper)}
+  button.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+  button:active{transform:translateY(1px)}
+  label{font-size:13px;color:var(--mute);display:flex;align-items:center;gap:7px}
+  input[type=range]{width:120px;accent-color:var(--ink)}
+  input[type=number]{font:inherit;font-size:13px;width:96px;padding:6px 8px;
+    border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:2px}
+  .meta{margin-top:12px;color:var(--mute);font-size:12.5px;display:flex;gap:16px;flex-wrap:wrap}
+  .meta code{color:var(--ink);font-size:12px}
+  footer{max-width:760px;margin:0 auto;padding:0 20px 40px;color:var(--mute);font-size:12.5px}
+  footer a{color:var(--ink)}
+  .note{margin-top:14px;padding:12px 14px;border-left:2px solid var(--line);color:var(--mute);font-size:12.5px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Procedural Chinese ink-wash landscape</h1>
+  <p class="sub">Fractal noise + contour extraction. <b>No AI, no model, no network.</b>
+     Same seed → same image, always.</p>
+</header>
+
+<main>
+  <div id="stage">
+    <canvas id="c" width="900" height="1200"></canvas>
+    <div class="busy" id="busy">generating…</div>
+  </div>
+
+  <div class="bar">
+    <button id="gen">Generate a new one</button>
+    <button id="png" class="ghost">Download PNG</button>
+  </div>
+  <div class="bar">
+    <label>ink   <input id="ink"  type="range" min="0.5" max="1.7" step="0.05" value="1"></label>
+    <label>皴 <input id="cun"  type="range" min="0.4" max="2.2" step="0.1"  value="1"></label>
+    <label>dry <input id="wet"  type="range" min="0.6" max="1.8" step="0.05" value="1"></label>
+    <label>seed <input id="seed" type="number" value="7" min="0" step="1"></label>
+  </div>
+
+  <div class="meta">
+    <span>render <code id="ms">–</code></span>
+    <span>seed <code id="sd">–</code></span>
+    <span>size <code id="sz">–</code></span>
+  </div>
+
+  <div class="note">
+    Every pixel is computed in your browser from a seeded PRNG, value-noise fBm and
+    ridged-multifractal height profiles. There is no image library, no GPU shader,
+    no server call — view source and read <code>src/inkwash.js</code>.
+    Re-render the same seed and you get a byte-identical image (the PNG encoder is
+    deterministic too).
+  </div>
+</main>
+
+<footer>
+  <p>MIT licensed. Part of a small experiment in procedural art.</p>
+</footer>
+
+<script src="src/inkwash.js"></script>
+<script>
+(function () {
+  var cv = document.getElementById('c');
+  var ctx = cv.getContext('2d');
+  var busy = document.getElementById('busy');
+  var raf = 0, pending = false;
+
+  function params() {
+    return {
+      seed: parseInt(document.getElementById('seed').value, 10) || 0,
+      ink:  parseFloat(document.getElementById('ink').value),
+      cun:  parseFloat(document.getElementById('cun').value),
+      wet:  parseFloat(document.getElementById('wet').value)
+    };
+  }
+  function pickSize(preview) {
+    if (preview) return { w: 380, h: 507 };            // 拖动时用小图，保证不卡
+    var mobile = Math.min(window.innerWidth, window.innerHeight) < 700;
+    return mobile ? { w: 720, h: 960 } : { w: 900, h: 1200 };
+  }
+
+  function paint(preview) {
+    var q = params(), sz = pickSize(preview);
+    cv.width = sz.w; cv.height = sz.h;
+    var t0 = performance.now();
+    var res = renderInk({ seed: q.seed, w: sz.w, h: sz.h, ink: q.ink, cun: q.cun, wet: q.wet });
+    ctx.putImageData(new ImageData(res.data, sz.w, sz.h), 0, 0);
+    var ms = Math.round(performance.now() - t0);
+    document.getElementById('ms').textContent = ms + ' ms' + (preview ? ' (preview)' : '');
+    document.getElementById('sd').textContent = q.seed;
+    document.getElementById('sz').textContent = sz.w + '\u00d7' + sz.h;
+  }
+
+  function render(preview) {
+    if (raf) cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(function () {
+      raf = 0;
+      if (pending) return;
+      pending = true;
+      busy.classList.toggle('on', !preview);
+      setTimeout(function () { paint(preview); pending = false; busy.classList.remove('on'); }, 0);
+    });
+  }
+
+  // 拖动中 = 小图实时预览；松手 = 全尺寸重绘（0.5s 不可能跟手）
+  ['ink', 'cun', 'wet'].forEach(function (id) {
+    var el = document.getElementById(id);
+    el.addEventListener('input', function () { render(true); });
+    el.addEventListener('change', function () { render(false); });
+  });
+  document.getElementById('seed').addEventListener('change', function () { render(false); });
+
+  document.getElementById('gen').addEventListener('click', function () {
+    document.getElementById('seed').value = Math.floor(Math.random() * 100000);
+    render(false);
+  });
+  document.getElementById('png').addEventListener('click', function () {
+    cv.toBlob(function (b) {
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(b);
+      a.download = 'inkwash-seed' + document.getElementById('seed').value + '.png';
+      a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
+    }, 'image/png');
+  });
+
+  paint(false);   // 打开即出图
+})();
+</script>
+</body>
+</html>
